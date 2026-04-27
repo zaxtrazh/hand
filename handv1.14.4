@@ -145,7 +145,7 @@ def gesture_to_number(s, lm):
     return 0
 
 # ⭐ ====== BARU: OPERATOR DETECTION ======
-def detect_operator(right_lm, left_lm):
+def detect_operator(right_lm, left_lm=None):
     # + PENJUMLAHAN: I+M kanan ditumpuk diatas I+M kiri
     right_i_up = right_lm[8].y < right_lm[6].y
     right_m_up = right_lm[12].y < right_lm[10].y
@@ -182,8 +182,8 @@ def detect_operator(right_lm, left_lm):
         return "/"
     
     # = SAMA DENGAN: Jempol + kelingking kanan, 3 jari tutup
-    right_thumb_up = right_lm[4].y < right_lm[2].y
-    right_pinky_up = right_lm[20].y < right_lm[18].y
+    right_thumb_up = right_lm[4].x < right_lm[20].x
+    right_pinky_up = right_lm[20].x > right_lm[17].x
     right_i_closed = right_lm[8].y >= right_lm[6].y
     right_m_closed = right_lm[12].y >= right_lm[10].y
     right_r_closed = right_lm[16].y >= right_lm[14].y
@@ -191,9 +191,9 @@ def detect_operator(right_lm, left_lm):
         return "="
     
     # CLEAR: Telunjuk + jempol kiri
-    left_i_up_clear = left_lm[8].y < left_lm[6].y
-    left_thumb_up_clear = left_lm[4].x < left_lm[2].x
-    if left_i_up_clear and left_thumb_up_clear:
+    right_i_up_clear = right_lm[8].y < right_lm[6].y
+    right_thumb_up_clear = right_lm[4].x < right_lm[2].x
+    if right_i_up_clear and right_thumb_up_clear:
         return "CLEAR"
     
     return None
@@ -278,7 +278,7 @@ while True:
                         last_stable_number = number
                         display_number = last_stable_number
                         last_display_number = display_number  # ⭐ Simpan stabil number
-
+        
         # ⭐ 2 TANGAN = MODE OPERATOR
         elif hands_detected == 2:
             current_mode = "OPERATOR"
