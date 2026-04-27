@@ -278,7 +278,7 @@ while True:
                         last_stable_number = number
                         display_number = last_stable_number
                         last_display_number = display_number  # ⭐ Simpan stabil number
-        
+
         # ⭐ 2 TANGAN = MODE OPERATOR
         elif hands_detected == 2:
             current_mode = "OPERATOR"
@@ -287,11 +287,16 @@ while True:
             
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
                 if handedness.classification[0].label == "Right":
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, (0,255,255), (0,255,255))
+                    # ✅ FIX: Gunakan mp_draw.draw_landmarks BENAR
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                     right_lm = hand_landmarks.landmark
+                    cv2.putText(frame, "RIGHT", (int(hand_landmarks.landmark[0].x*640), int(hand_landmarks.landmark[0].y*360)-20),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
                 else:
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, (255,0,255), (255,0,255))
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                     left_lm = hand_landmarks.landmark
+                    cv2.putText(frame, "LEFT", (int(hand_landmarks.landmark[0].x*640), int(hand_landmarks.landmark[0].y*360)-20),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
             
             if right_lm and left_lm:
                 operator_detected = detect_operator(right_lm, left_lm)
