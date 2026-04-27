@@ -328,11 +328,13 @@ while True:
         dir_changes = 0
         move_accum = 0
 
-    # ⭐ HITUNG RESULT jika ada "="
-    if "=" in calculation and len(calculation) >= 3:
-        num1 = calculation[-3]
-        op = calculation[-2]
-        num2 = calculation[-1]
+    # ⭐ HITUNG RESULT jika "=" adalah ELEMEN TERAKHIR (FIXED!)
+    if len(calculation) >= 4 and calculation[-1] == "=":
+        num1 = calculation[-4]  # Index 0
+        op = calculation[-3]    # Index 1  
+        num2 = calculation[-2]  # Index 2
+        # Hapus "=" dari list
+        calculation.pop()
         
         if op == "+": result = num1 + num2
         elif op == "-": result = num1 - num2
@@ -340,6 +342,7 @@ while True:
         elif op == "/": result = num1 // num2 if num2 != 0 else 0
         
         number = result
+        print(f"CALC: {num1} {op} {num2} = {result}")  # Debug
 
     # DISPLAY INFO
     cv2.putText(frame, f"number:{number}", (5,40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
