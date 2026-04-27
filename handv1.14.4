@@ -192,7 +192,7 @@ def detect_operator(right_lm, left_lm):
     
     # CLEAR: Telunjuk + jempol kiri
     left_i_up_clear = left_lm[8].y < left_lm[6].y
-    left_thumb_up_clear = left_lm[4].y < left_lm[2].y
+    left_thumb_up_clear = left_lm[4].x < left_lm[2].x
     if left_i_up_clear and left_thumb_up_clear:
         return "CLEAR"
     
