@@ -236,7 +236,9 @@ while True:
             
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
                 if handedness.classification[0].label == "Right":
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                    mp_draw.DrawingSpec(color=(0,255,255), thickness=2, circle_radius=2),
+                    mp_draw.DrawingSpec(color=(0,255,255), thickness=2))
                     
                     lm = hand_landmarks.landmark
                     status = finger_status(lm)
@@ -307,15 +309,21 @@ while True:
             
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
                 if handedness.classification[0].label == "Right":
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, (0,255,0), (0,255,0))
+                    # FIX: Format drawing yang benar
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                                         mp_draw.DrawingSpec(color=(0,255,0), thickness=2, circle_radius=2),
+                                         mp_draw.DrawingSpec(color=(0,255,0), thickness=2))
                     right_hand = hand_landmarks.landmark
                 else:  # Left
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, (255,0,0), (255,0,0))
+                    # FIX: Format drawing yang benar
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                                         mp_draw.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=2),
+                                         mp_draw.DrawingSpec(color=(255,0,0), thickness=2))
                     left_hand = hand_landmarks.landmark
             
             if right_hand is not None and left_hand is not None:
-                # Deteksi operator
-                if current_operator is None:  # Belum ada operator
+                # Deteksi operator (sama)
+                if current_operator is None:
                     if detect_addition(right_hand, left_hand):
                         current_operator = "+"
                         cv2.putText(frame, "+", (300,200), cv2.FONT_HERSHEY_SIMPLEX, 3, (0,255,0), 5)
@@ -326,7 +334,7 @@ while True:
                         current_operator = "÷"
                         cv2.putText(frame, "÷", (300,200), cv2.FONT_HERSHEY_SIMPLEX, 3, (0,255,0), 5)
                 
-                # Hitung hasil jika ada operator
+                # Hitung hasil
                 if current_operator and len(digit_list) >= 2:
                     op1, op2 = digit_list[-2], digit_list[-1]
                     if current_operator == "+":
@@ -334,20 +342,19 @@ while True:
                     elif current_operator == "×":
                         result = op1 * op2
                     elif current_operator == "÷" and op2 != 0:
-                        result = op1 // op2  # Integer division
+                        result = op1 // op2
                     else:
                         result = 0
                     
-                    # Tampilkan expression
                     calc_display = f"{op1} {current_operator} {op2} = {result}"
                 
-                # Equals gesture untuk finalize
+                # Equals gesture
                 if detect_equals(right_hand):
                     calc_display = f"RESULT: {result}"
                     cv2.putText(frame, "=", (300,250), cv2.FONT_HERSHEY_SIMPLEX, 3, (0,255,255), 5)
-                    # Reset untuk kalkulasi berikutnya
                     current_operator = None
-                    digit_list = digit_list[:len(digit_list)-2]
+                    if len(digit_list) >= 2:
+                        digit_list = digit_list[:-2]  # Reset 2 angka terakhir
 
     else:
         # Tidak ada tangan → simpan ke list (digit mode)
