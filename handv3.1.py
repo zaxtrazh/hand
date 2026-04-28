@@ -1,0 +1,394 @@
+import cv2
+import mediapipe as mp
+
+mp_hands = mp.solutions.hands
+mp_draw = mp.solutions.drawing_utils
+
+hands = mp_hands.Hands(
+    max_num_hands=2,  # ⭐ Support 2 tangan
+    model_complexity=0,
+    min_detection_confidence=0.7,
+    min_tracking_confidence=0.7
+)
+
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+
+# ====== WAVE TRACKER (ASLI) ======
+prev_x = None
+prev_dir = 0
+dir_changes = 0
+move_accum = 0
+cooldown = 0
+
+def detect_wave(index_x):
+    global prev_x, prev_dir, dir_changes, move_accum, cooldown
+    if cooldown > 0:
+        cooldown -= 1
+        return False
+    if prev_x is None:
+        prev_x = index_x
+        return False
+
+    dx = index_x - prev_x
+    prev_x = index_x
+    move_accum += abs(dx)
+
+    if abs(dx) < 0.025:
+        return False
+
+    direction = 1 if dx > 0 else -1
+
+    if prev_dir == 0:
+        prev_dir = direction
+        return False
+
+    if direction != prev_dir:
+        dir_changes += 1
+        prev_dir = direction
+
+    if dir_changes >= 2 and move_accum > 0.04:
+        dir_changes = 0
+        move_accum = 0
+        cooldown = 15
+        return True
+
+# ====== DISPLAY HOLD (ASLI) ======
+display_number = 0
+hold_frames = 0
+last_stable_number = 0
+
+# ====== MODE PENYUSUNAN ANGKA (ASLI) ======
+pending_tens = None
+waiting_last_digit = False
+
+# ====== STABILIZER (ASLI) ======
+stable_count = 0
+prev_base = 0
+STABLE_MIN = 4
+
+# ⭐ ====== BARU: MATH SYSTEM ======
+calculation = []  # [num1, op, num2]
+current_mode = "DIGIT"  # DIGIT, OPERATOR
+last_display_number = 0
+operator_stable = ""
+result = 0
+
+# ====== THUMB UP (ASLI) ======
+def is_thumb_up(lm):
+    mcp = lm[2]
+    tip = lm[4]
+    vx = tip.x - mcp.x
+    vy = tip.y - mcp.y
+    return vy < -0.08 and abs(vx) < 0.12
+
+# ====== GESTURE C (ASLI) ======
+def is_c_hundred(lm):
+    curled = (
+        lm[8].y >= lm[6].y and
+        lm[12].y >= lm[10].y and
+        lm[16].y >= lm[14].y and
+        lm[20].y >= lm[18].y and
+        lm[8].y < lm[4].y and
+        lm[12].y < lm[4].y and
+        lm[16].y < lm[4].y and
+        lm[20].y < lm[4].y
+    )
+    thumb_below = lm[4].y > lm[8].y
+    thumb_left = lm[4].x < lm[3].x
+    gap = abs(lm[4].y - lm[8].y) > 0.07
+    return curled and thumb_below and thumb_left and gap
+
+# ====== FINGER STATUS (ASLI) ======
+def finger_status(lm):
+    status = [0,0,0,0,0]
+    palm_view = lm[5].x < lm[17].x
+
+    if palm_view:
+        if lm[4].x < lm[3].x:
+            status[0] = 1
+    else:
+        if lm[4].x > lm[3].x:
+            status[0] = 1
+
+    tips = [8,12,16,20]
+    pips = [6,10,14,18]
+
+    for i,(tip,pip) in enumerate(zip(tips,pips), start=1):
+        if lm[tip].y < lm[pip].y:
+            status[i] = 1
+
+    return status
+
+# ====== GESTURE MAPPING (ASLI) ======
+def gesture_to_number(s, lm):
+    T,I,M,R,P = s
+
+    if is_c_hundred(lm):
+        return 100
+
+    if I==0 and M==0 and R==0 and P==0 and is_thumb_up(lm):
+        return 10
+
+    if [T,I,M,R,P] == [0,1,0,0,0]: return 1
+    if [T,I,M,R,P] == [0,1,1,0,0]: return 2
+    if [T,I,M,R,P] == [1,1,1,0,0]: return 3
+    if [T,I,M,R,P] == [0,1,1,1,1]: return 4
+    if [T,I,M,R,P] == [1,1,1,1,1]: return 5
+    if [T,I,M,R,P] == [0,1,1,1,0]: return 6
+    if [T,I,M,R,P] == [0,1,1,0,1]: return 7
+    if [T,I,M,R,P] == [0,1,0,1,1]: return 8
+    if [T,I,M,R,P] == [0,0,1,1,1]: return 9
+    if [T,I,M,R,P] == [0,0,0,0,0]: return 0
+
+    return 0
+
+# ⭐ ====== BARU: OPERATOR DETECTION ======
+def detect_operator(right_lm, left_lm=None):
+    # + PENJUMLAHAN: I+M kanan ditumpuk diatas I+M kiri
+    #right_i_up = right_lm[8].y < right_lm[6].y
+    #right_m_up = right_lm[12].y < right_lm[10].y
+    #left_i_up = left_lm[8].y < left_lm[6].y
+    #left_m_up = left_lm[12].y < left_lm[10].y
+    #right_on_top = right_lm[8].y < left_lm[8].y + 0.03 and right_lm[12].y < left_lm[12].y + 0.03
+    #crossed_x = abs(right_lm[8].x - left_lm[12].x) < 0.08 or abs(right_lm[12].x - left_lm[8].x) < 0.08
+    #if right_i_up and right_m_up and left_i_up and left_m_up and right_on_top and crossed_x:
+        #return "+"
+    kanan_2_jari = right_lm[8].x < right_lm[6].x and right_lm[12].x < right_lm[10].x
+    kiri_2_jari = left_lm[8].x > left_lm[6].x and left_lm[12].x > left_lm[10].x
+    jarak = abs(right_lm[8].y - left_lm[8].y) < 0.06
+    if kanan_2_jari and kiri_2_jari and jarak:
+        return "+"   
+    
+    
+    # - PENGURANGAN: I+M kanan dijauhkan dari I+M kiri
+    right_i_up_m = right_lm[8].y < right_lm[6].y
+    right_m_up_m = right_lm[12].y < right_lm[10].y
+    left_i_up_m = left_lm[8].x > left_lm[6].x
+    left_m_up_m = left_lm[12].x > left_lm[10].x
+    right_far = abs(right_lm[8].x - left_lm[8].x) > 0.12
+    if right_i_up_m and right_m_up_m and left_i_up_m and left_m_up_m and right_far:
+        return "-"
+    
+    # * PERKALIAN: Ujung I kanan → pangkal M kiri + telapak kiri samping kanan
+    #tip_right_i = right_lm[8]
+    #base_left_m = left_lm[10]
+    #left_palm_side = left_lm[17].x > left_lm[5].x + 0.02  # Menghadap kanan
+    #multiply_touch = (abs(tip_right_i.x - base_left_m.x) < 0.06 and 
+                     #abs(tip_right_i.y - base_left_m.y) < 0.06)
+    #if multiply_touch and left_palm_side:
+        #return "*"
+    kiri_tegak = left_lm[8].y < left_lm[10].y 
+    kanan_tunjuk = right_lm[8].x < right_lm[6].x
+    tempel_tangan = abs(right_lm[8].x - left_lm[3].x) < 0.06
+    if kiri_tegak and kanan_tunjuk and tempel_tangan:
+        return "x"
+    
+    # / PEMBAGIAN: Telapak kiri atas + kanan tegak lurus lama
+    #left_palm_up = left_lm[0].z < left_lm[9].z - 0.08  # Menghadap atas
+    #right_straight = abs(right_lm[8].x - right_lm[5].x) < 0.04  # Tegak lurus
+    #right_cross = right_lm[8].y > left_lm[0].y - 0.08 and right_lm[8].y < left_lm[0].y + 0.08
+    #if left_palm_up and right_straight and right_cross:
+        #return "/"
+    # / PEMBAGIAN: Telapak kiri atas + kanan tegak lurus lama
+    kiri_tengadah = left_lm[8].x > left_lm[6].x and left_lm[12].x > left_lm[10].x and left_lm[16].x > left_lm[14].x and left_lm[20].x > left_lm[18].x
+    kanan_potong = right_lm[4].y < right_lm[12].y and right_lm[8].y < right_lm[16].y
+    if kiri_tengadah and kanan_potong:
+        return ":"
+    
+    # = SAMA DENGAN: Jempol + kelingking kanan, 3 jari tutup
+    right_thumb_up = right_lm[4].x < right_lm[2].x
+    right_pinky_up = right_lm[20].x > right_lm[17].x
+    right_i_closed = right_lm[8].y >= right_lm[6].y
+    right_m_closed = right_lm[12].y >= right_lm[10].y
+    right_r_closed = right_lm[16].y >= right_lm[14].y
+    if right_thumb_up and right_pinky_up and right_i_closed and right_m_closed and right_r_closed:
+        return "="
+    
+    # CLEAR: Telunjuk + jempol kiri
+    right_i_up_clear = right_lm[8].y < right_lm[6].y and right_lm[12].y > right_lm[10].y and right_lm[16].y > right_lm[14].y and right_lm[20].y > right_lm[18].y
+    right_thumb_up_clear = right_lm[4].x < right_lm[2].x
+    if right_i_up_clear and right_thumb_up_clear:
+        return "CLEAR"
+    
+    return None
+
+cv2.namedWindow("Hand Tracking", cv2.WND_PROP_FULLSCREEN)
+cv2.setWindowProperty("Hand Tracking", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    frame = cv2.flip(frame, 1)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = hands.process(rgb)
+    
+    cv2.putText(frame, f"Kamus BIMA | Didanai oleh DPPM Kemdiktisaintek 2026", (10,20),
+    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+
+    number = 0
+    hands_detected = 0
+
+    if results.multi_hand_landmarks and results.multi_handedness:
+        hands_detected = len(results.multi_hand_landmarks)
+        
+        # ⭐ 1 TANGAN KANAN = MODE DIGIT (ASLI + SAVE LOGIC)
+        if hands_detected == 1:
+            current_mode = "DIGIT"
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                if handedness.classification[0].label == "Right":
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    
+                    lm = hand_landmarks.landmark
+                    status = finger_status(lm)
+                    base_number = gesture_to_number(status, lm)
+
+                    # ASLI STABILIZER & LOGIC
+                    if base_number == prev_base and base_number != 0:
+                        stable_count += 1
+                    else:
+                        stable_count = 0
+                    prev_base = base_number
+
+                    stable_number = base_number if stable_count >= STABLE_MIN else 0
+                    
+                    if hold_frames > 0:
+                        number = display_number
+                        hold_frames -= 1
+                    else:
+                        display_number = 0
+                        number = stable_number
+
+                        # ASLI GESTURE LOGIC
+                        if stable_number == 100 and last_stable_number == 1:
+                            display_number = 100
+                            number = display_number
+                            last_display_number = number
+                            hold_frames = 25
+                        elif waiting_last_digit and 1 <= stable_number <= 9:
+                            display_number = last_stable_number + stable_number
+                            number = display_number
+                            last_stable_number = number
+                            last_display_number = last_stable_number
+                            hold_frames = 25
+                            waiting_last_digit = False
+                            #pending_tens = 0
+                            #stable_number = 0
+                            #last_stable_number = 0
+                        elif waiting_last_digit and last_stable_number == 10:
+                            display_number = pending_tens * 10 
+                            number = display_number
+                            last_display_number = number
+                            hold_frames = 25
+                            #waiting_last_digit = True
+                        elif stable_number == 10 and 1 <= last_stable_number <= 9:
+                            pending_tens = last_stable_number
+                            display_number = pending_tens * 10 
+                            last_display_number = display_number
+                            waiting_last_digit = True
+                        elif 1 <= stable_number <= 9:
+                            index_x = lm[8].x
+                            if detect_wave(index_x):
+                                display_number = stable_number + 10
+                                number = display_number
+                                last_stable_number = number
+                                last_display_number = last_stable_number
+                                hold_frames = 25
+                                
+                    if number != 0 and hold_frames == 0:
+                        last_stable_number = number
+                        display_number = last_stable_number
+                        last_display_number = display_number  # ⭐ Simpan stabil number
+        
+        # ⭐ 2 TANGAN = MODE OPERATOR
+        elif hands_detected == 2:
+            current_mode = "OPERATOR"
+            right_lm = None
+            left_lm = None
+            
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                if handedness.classification[0].label == "Right":
+                    # ✅ FIX: Gunakan mp_draw.draw_landmarks BENAR
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    right_lm = hand_landmarks.landmark
+                    cv2.putText(frame, "RIGHT", (int(hand_landmarks.landmark[0].x*640), int(hand_landmarks.landmark[0].y*360)-20),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                else:
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    left_lm = hand_landmarks.landmark
+                    cv2.putText(frame, "LEFT", (int(hand_landmarks.landmark[0].x*640), int(hand_landmarks.landmark[0].y*360)-20),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
+            
+            if right_lm and left_lm:
+                operator_detected = detect_operator(right_lm, left_lm)
+                if operator_detected:
+                    cv2.putText(frame, operator_detected, (300,100), cv2.FONT_HERSHEY_SIMPLEX, 3, (255,255,0), 5)
+                    operator_stable = operator_detected
+
+    else:
+        # ⭐ TANGAN TURUN: SIMPAN KE CALCULATION
+        if current_mode == "DIGIT" and last_display_number != 0:
+            calculation.append(last_display_number)
+            #calculation.append(number)
+            last_display_number = 0
+            number = 0
+            display_number = 0
+            stable_number = 0
+            last_stable_number = 0
+            print(f"DIGIT SAVED: {calculation}")  # Debug
+            last_display_number = 0
+            
+        elif current_mode == "OPERATOR" and operator_stable != "":
+            if operator_stable == "CLEAR":
+                calculation.clear()
+                result = 0
+                print("CLEAR ALL")
+            else:
+                calculation.append(operator_stable)
+                print(f"OP SAVED: {calculation}")  # Debug
+            
+            operator_stable = ""
+        
+        # Reset wave
+        prev_x = None
+        prev_dir = 0
+        dir_changes = 0
+        move_accum = 0
+
+    # ⭐ HITUNG RESULT jika "=" adalah ELEMEN TERAKHIR (FIXED!)
+    if len(calculation) >= 4 and calculation[-1] == "=":
+        num1 = calculation[-4]  # Index 0
+        op = calculation[-3]    # Index 1  
+        num2 = calculation[-2]  # Index 2
+        
+        calculation.pop() # Hapus "=" dari list
+        
+        if op == "+": result = num1 + num2
+        elif op == "-": result = num1 - num2
+        elif op == "x": result = num1 * num2
+        elif op == ":": result = num1 / num2 if num2 != 0 else 0
+        
+        number = result
+        print(f"CALC: {num1} {op} {num2} = {result}")  # Debug
+
+    # DISPLAY INFO
+    cv2.putText(frame, f"number:{number}", (5,40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+    cv2.putText(frame, f"Last_stable:{last_stable_number}", (5,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+    cv2.putText(frame, f"Last_display_number:{last_display_number}", (5,80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+    cv2.putText(frame, f"Calc: {calculation}", (5,100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
+    cv2.putText(frame, f"Mode: {current_mode}", (5,120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+    if result != 0:
+        cv2.putText(frame, f"{num1}{op}{num2}={result}", (5,350), cv2.FONT_HERSHEY_SIMPLEX, 3, (0,255,0), 5)
+        
+    #cv2.putText(frame, f"{number}", (250,350), cv2.FONT_HERSHEY_SIMPLEX, 5, (0,255,0), 10)
+
+    cv2.imshow("Hand Tracking", frame)
+   
+    if cv2.waitKey(1) & 0xFF == 27:
+        break
+
+cap.release()
+cv2.destroyAllWindows()
