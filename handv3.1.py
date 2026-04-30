@@ -35,7 +35,7 @@ def detect_wave(index_x):
     prev_x = index_x
     move_accum += abs(dx)
 
-    if abs(dx) < 0.025:
+    if abs(dx) < 0.015:
         return False
 
     direction = 1 if dx > 0 else -1
@@ -192,14 +192,14 @@ def detect_operator(right_lm, left_lm=None):
     #if left_palm_up and right_straight and right_cross:
         #return "/"
     # / PEMBAGIAN: Telapak kiri atas + kanan tegak lurus lama
-    kiri_tengadah = left_lm[8].x > left_lm[6].x and left_lm[12].x > left_lm[10].x and left_lm[16].x > left_lm[14].x and left_lm[20].x > left_lm[18].x
-    kanan_potong = right_lm[4].y < right_lm[12].y and right_lm[8].y < right_lm[16].y
-    if kiri_tengadah and kanan_potong:
+    #kiri_tengadah = left_lm[8].x > left_lm[6].x and left_lm[12].x > left_lm[10].x and left_lm[16].x > left_lm[14].x and left_lm[20].x > left_lm[18].x
+    kanan_potong = right_lm[4].y < right_lm[8].y and right_lm[8].y < right_lm[12].y and right_lm[12].y < right_lm[16].y and right_lm[16].y < right_lm[20].y
+    if kanan_potong:
         return ":"
     
     # = SAMA DENGAN: Jempol + kelingking kanan, 3 jari tutup
-    right_thumb_up = right_lm[4].x < right_lm[2].x
-    right_pinky_up = right_lm[20].x > right_lm[17].x
+    right_thumb_up = right_lm[4].y < right_lm[2].y
+    right_pinky_up = right_lm[20].y < right_lm[18].y
     right_i_closed = right_lm[8].y >= right_lm[6].y
     right_m_closed = right_lm[12].y >= right_lm[10].y
     right_r_closed = right_lm[16].y >= right_lm[14].y
@@ -208,7 +208,7 @@ def detect_operator(right_lm, left_lm=None):
     
     # CLEAR: Telunjuk + jempol kiri
     right_i_up_clear = right_lm[8].y < right_lm[6].y and right_lm[12].y > right_lm[10].y and right_lm[16].y > right_lm[14].y and right_lm[20].y > right_lm[18].y
-    right_thumb_up_clear = right_lm[4].x < right_lm[2].x
+    right_thumb_up_clear = right_lm[4].y < right_lm[2].y
     if right_i_up_clear and right_thumb_up_clear:
         return "CLEAR"
     
