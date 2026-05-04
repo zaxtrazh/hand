@@ -226,8 +226,8 @@ while True:
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(rgb)
     
-    cv2.putText(frame, f"--Kamus BIMA | Didanai oleh DPPM Kemdiktisaintek 2026--", (5,20),
-    cv2.FONT_HERSHEY_COMPLEX, 0.6, (235,235,235), 1)
+    cv2.putText(frame, f"Kamus BIMA | Didanai oleh DPPM Kemdiktisaintek 2026", (5,20),
+    cv2.FONT_HERSHEY_COMPLEX, 0.6, (0,255,255), 2)
 
     number = 0
     hands_detected = 0
@@ -284,12 +284,12 @@ while True:
                             last_display_number = number
                             hold_frames = 25
                             #waiting_last_digit = True
-                        elif stable_number == 10 and 1 <= last_stable_number <= 9:
+                        elif stable_number == 10 and last_stable_number != None and 1 <= last_stable_number <= 9 :
                             pending_tens = last_stable_number
                             display_number = pending_tens * 10 
                             last_display_number = display_number
                             waiting_last_digit = True
-                        elif 1 <= stable_number <= 9:
+                        elif 1 <= stable_number <= 9 and last_stable_number != 10:
                             index_x = lm[8].x
                             if detect_wave(index_x):
                                 display_number = stable_number + 10
@@ -349,8 +349,12 @@ while True:
                 print("CLEAR ALL")
             else:
                 if len(calculation) == 1 or len(calculation) == 3:
-                    calculation.append(operator_stable)
-                    print(f"OP SAVED: {calculation}")  # Debug
+                    if len(calculation) == 1 and operator_stable != "=":
+                        calculation.append(operator_stable)
+                        print(f"OP SAVED: {calculation}")  # Debug
+                    elif len(calculation) == 3 and operator_stable == "=":
+                        calculation.append(operator_stable)
+                        print(f"OP SAVED: {calculation}")  # Debug
             
             operator_stable = ""
         
@@ -382,7 +386,7 @@ while True:
     cv2.putText(frame, f"DN:{last_display_number}", (5,80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
     if current_mode == "DIGIT":
         cv2.putText(frame, f"{last_display_number}", (300,100), cv2.FONT_HERSHEY_SIMPLEX, 3, (100,0,255), 5)
-    cv2.putText(frame, f"C: {calculation}", (5,100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,255), 2)
+    cv2.putText(frame, f"C: {calculation}", (5,100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
     cv2.putText(frame, f"M: {current_mode}", (5,120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
     #if result != 0:
         #cv2.putText(frame, f"{num1}{op}{num2}={result}", (5,350), cv2.FONT_HERSHEY_SIMPLEX, 3, (0,255,0), 5)
